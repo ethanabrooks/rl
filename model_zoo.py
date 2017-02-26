@@ -51,9 +51,53 @@ def trpo_conv_net(x, out_size):
                     filter_size_list=(4, 4),
                     dense_size=20)
 
+
 class RecurrentConv:
-    def __init__(self, cell=tf.contrib.rnn.GRUBlockCell, ):
+    def __init__(self,
+                 cell=tf.contrib.rnn.GRUBlockCell(10),
+                 conv_net=trpo_conv_net):
         self._cell = cell
+        self._state = None
+        self._conv_net = conv_net
+
+    def forward(self, x, out_size):
+        if self._state is None:
+            batch_size = x.get_shape()[0]
+            self._state = tf.get_variable('state', [batch_size, self._cell.state_size])
+            tf.global_variables_initializer()
+
+        conv_out = self._conv_net(x, self._cell.state_size)  # arbitrary size
+        cell_out, self._state = self._cell(conv_out, self._state)
+        return mlp(cell_out, out_size)
+
+
+class MultiStepConv:
+    def __init__(self,
+                 cell=tf.contrib.rnn.GRUBlockCell(10),
+                 conv_net=trpo_conv_net,
+                 bptt_steps=6):
+        self._cell = cell
+        self._states = []
+        self._bptt_steps = bptt_steps
+        self._conv_net = conv_net
+        self._cell_state = None
 
     def forward(self, x, out_size):
 
+        # initialize cell state
+        if self._cell_state is None:
+            batch_size = x.get_shape()[0]
+            self._cell_state = tf.get_variable('cell_state', [batch_size, self._cell.state_size])
+            tf.global_variables_initializer()
+
+        self._states.append(self._conv_net(x, self._cell.state_size))
+        if len(self._states) > self._bptt_steps:
+            self._states.pop(0)
+
+        # progress last cell state for backpropogation by one
+        cell_out, cell_state = self._cell(self._states[0], self._cell_state)
+        self._cell_state = tf.stop_gradient(cell_state)
+        for conv_state in self._states[1:]:
+            cell_out, cell_state = self._cell(conv_state, cell_state)
+
+        return mlp(cell_out, out_size)

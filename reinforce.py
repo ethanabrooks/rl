@@ -1,28 +1,27 @@
+from __future__ import print_function
+
 import gym.spaces
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.training.adam import AdamOptimizer
-from tensorflow.python.training.ftrl import FtrlOptimizer
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
+from tqdm import tqdm
+from util import *
 
 
-def get_base_name(var):
-    return var.name.split(':')[0]
-
-
-def train(env, network, optimizer):
-    dtype = env.observation_space.low.dtype
+def train(env, network, optimizer, show_off_at):
+    dtype = tf.float32
     assert (isinstance(env.action_space, gym.spaces.Discrete))
-    obs_size, = env.observation_space.shape
+    obs_size = env.observation_space.shape
     act_size = env.action_space.n
 
     # get action
     observation_ph = tf.placeholder(dtype, obs_size, name='observation')
-    logits = network(tf.expand_dims(observation_ph, 0), [5, act_size])
+    logits = network(x=tf.expand_dims(observation_ph, 0), out_size=act_size)
     action_dist = tf.nn.softmax(logits, name='action_dist')
     tf_action = tf.squeeze(tf.multinomial(logits, 1), name='action')
 
     params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+    for param in params:
+        print(param)
 
     # get score
     prob = tf.gather(tf.squeeze(action_dist), tf_action, name='prob')
@@ -50,7 +49,7 @@ def train(env, network, optimizer):
             mean_reward = 0
 
             # average over batches
-            for b in range(batches):
+            for b in tqdm(range(batches)):
                 observation = env.reset()
                 done = False
                 t = 0
@@ -74,21 +73,8 @@ def train(env, network, optimizer):
                 for gradient, cumulative_score in zip(gradients, cumulative_scores):
                     gradient -= cumulative_score * cumulative_reward / batches
 
-            print("Epoch: {}. Reward: {}".format(e, mean_reward))
+            print("\rEpoch: {}. Reward: {}".format(e, mean_reward))
             feed_dict = dict(zip(gradient_phs, gradients))
             sess.run(train_op, feed_dict)
-            if mean_reward >= 200:
+            if mean_reward >= show_off_at:
                 show_off = True
-
-if __name__ == '__main__':
-    learning_rate = 0.1
-    optimizers = {
-        1: AdamOptimizer(learning_rate),
-        2: FtrlOptimizer(learning_rate),
-        3: RMSPropOptimizer(learning_rate),
-    }
-    optimizer = optimizers[1]
-
-    env = gym.make('CartPole-v1')
-    dtype = env.observation_space.low.dtype
-    train(env, MLP([4, ], dtype))

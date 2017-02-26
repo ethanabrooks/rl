@@ -4,5 +4,7 @@ setup(name='rl',
       packages=find_packages(),
       install_requires=[
           'tensorflow',
-          'gym'
+          'gym',
+          'gym[atari]',
+          'pygame',
       ])

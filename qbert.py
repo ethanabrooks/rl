@@ -4,9 +4,8 @@ import gym.spaces
 from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.ftrl import FtrlOptimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
-
-import model_zoo
 import reinforce
+from model_zoo import trpo_conv_net, dqn_conv_net
 
 learning_rate = 0.1
 optimizers = {
@@ -16,7 +15,5 @@ optimizers = {
 }
 optimizer = optimizers[1]
 
-env = gym.make('CartPole-v1')
-
-model = partial(model_zoo.mlp, hidden_sizes=[5])
-reinforce.train(env, model, optimizer, show_off_at=200)
+env = gym.make('Qbert-v0')
+reinforce.train(env, trpo_conv_net, optimizer, show_off_at=600)

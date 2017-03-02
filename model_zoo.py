@@ -101,3 +101,15 @@ class MultiStepConv:
             cell_out, cell_state = self._cell(conv_state, cell_state)
 
         return mlp(cell_out, out_size)
+
+class StatefulGRU:
+    def __init__(self, size):
+        self._state = None
+        self._cell = tf.contrib.rnn.GRUBlockCell(size)
+
+    def forward(self, x, out_size):
+        if self._state is None:
+            batch_size = x.get_shape()[0]
+            self._state = tf.get_variable('cell_state', [batch_size, self._cell.state_size])
+        x, self._state = self._cell(x, self._state)
+        return mlp(x, out_size)

@@ -36,16 +36,13 @@ def train(env, network, optimizer, show_off_at):
     epochs = 200
     batches = 500
 
-    def zeros_like_params():
-        return [np.zeros(param.get_shape()) for param in params]
-
     show_off = False
     with tf.Session() as sess:
         tf.global_variables_initializer().run()
 
         # update every epoch
         for e in range(epochs):
-            gradients = zeros_like_params()
+            gradients = zeros_like_list(params)
             mean_reward = 0
 
             # average over batches
@@ -54,7 +51,7 @@ def train(env, network, optimizer, show_off_at):
                 done = False
                 t = 0
                 cumulative_reward = 0
-                cumulative_scores = zeros_like_params()
+                cumulative_scores = zeros_like_list(params)
 
                 # steps
                 while not done:

@@ -1,99 +1,90 @@
+import random
+
 import gym.spaces
-import numpy as np
 import tensorflow as tf
-from tensorflow.python.training.adam import AdamOptimizer
-from tensorflow.python.training.ftrl import FtrlOptimizer
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
+import numpy as np
 
-learning_rate = 0.1
-optimizers = {
-    1: AdamOptimizer(learning_rate),
-    2: FtrlOptimizer(learning_rate),
-    3: RMSPropOptimizer(learning_rate),
-}
-optimizer = optimizers[2]
+from util import get_dtype
 
 
-def get_base_name(var):
-    return var.name.split(':')[0]
+def gather_1d(params, indices):
+    h, w = params.get_shape()
+    act_indices = tf.stack([tf.range(h), indices], axis=1)
+    return tf.gather_nd(params, act_indices)
 
 
-env = gym.make('CartPole-v1')
+# noinspection PyPep8Naming
+def train(env, network, optimizer):
+    assert (isinstance(env.action_space, gym.spaces.Discrete))
+    obs_size, = env.observation_space.shape
+    act_size = env.action_space.n
+    dtype = get_dtype(env)
 
-dtype = env.observation_space.low.dtype
+    bsize = 32
+    memory_buffer_size = 3 * bsize
+    epochs = 50000
+    gamma = .9
+    epsilon = .5
 
-assert (isinstance(env.action_space, gym.spaces.Discrete))
-obs_size, = env.observation_space.shape
-act_size = env.action_space.n
+    observation_ph = tf.placeholder(dtype, [1, obs_size], name='observation')
+    tf_Q = network(observation_ph, act_size)
+    nominal_action = tf.argmax(tf.squeeze(tf_Q), axis=0, name='nominal_action')
 
-hidden_size = 3
-sample_size = 10
+    observations_ph = []
+    actions_ph = tf.placeholder(tf.int32, [bsize], name='batch_actions')
+    rewards_ph = tf.placeholder(dtype, [bsize], name='reward')
+    Qs = []
+    for _ in range(2):
+        batch_observations = tf.placeholder(dtype, [bsize, obs_size],
+                                            name='batch_observations')
+        observations_ph.append(batch_observations)
+        Qs.append(network(batch_observations, act_size))
 
-memory_buffer = []
+    y = rewards_ph + gamma * tf.reduce_max(Qs[1], axis=1)
+    d = gather_1d(Qs[0], actions_ph)
+    tf_loss = tf.square(y - d)
+    train_op = optimizer.minimize(tf_loss)
 
+    show_off = False
+    with tf.Session() as sess:
+        tf.global_variables_initializer().run()
+        memory_buffer = []
 
-class Model:
-    def __init__(self, hidden_size):
-        self.weights = [tf.get_variable('weight0', [obs_size, hidden_size], dtype),
-                        tf.get_variable('weight1', [hidden_size, act_size], dtype)]
+        # update every epoch
+        for e in range(epochs):
+            mean_reward = 0
+            observation = env.reset()
+            done = False
 
-        self.biases = [tf.get_variable('bias0', [hidden_size], dtype),
-                       tf.get_variable('bias1', [act_size], dtype)]
+            step = 0
+            # steps
+            while not done:
+                step += 1
+                if show_off:
+                    env.render()
+                if random.random() < epsilon:
+                    action = env.action_space.sample()
+                else:
+                    action, Q = sess.run([nominal_action, tf_Q],
+                                         {observation_ph: observation.reshape(1, -1)})
 
-    def perceptron(self, i, x):
-        return tf.matmul(x, self.weights[i]) + self.biases[i]
+                next_observation, reward, done, info = env.step(action)
+                if done:
+                    next_observation = None
+                mean_reward = mean_reward * (step - 1) / step + reward / step
+                memory_buffer.append((observation, action, reward, next_observation))
+                observation = next_observation
 
-    def forward(self, x):
-        hidden = tf.sigmoid(self.perceptron(0, x), name='hidden')
-        return self.perceptron(1, hidden)
+                if len(memory_buffer) >= memory_buffer_size:
+                    random.shuffle(memory_buffer)
+                    batch, memory_buffer = memory_buffer[:bsize], memory_buffer[bsize:]
+                    sequence = zip(*batch)
+                    observations, actions, rewards, next_observations = map(np.array, sequence)
+                    _, loss = sess.run([train_op, tf_loss], feed_dict={
+                        observations_ph[0]: observations,
+                        actions_ph: actions,
+                        rewards_ph: rewards,
+                        observations_ph[1]: next_observations,
+                    })
 
-
-model = Model(hidden_size)
-
-shape = [sample_size, 2 * obs_size]
-observations_pair_ph = tf.placeholder(dtype, shape, name='state_action')
-actions_ph = tf.placeholder(tf.int32, [sample_size, 2])
-rewards_ph = tf.placeholder(dtype, [sample_size])
-
-q = tf.gather_nd(model.forward(observations_pair_ph), actions_ph)
-loss = tf.nn.l2_loss((q[0] + rewards_ph) - q[1])
-train_op = optimizer.minimize(loss)
-
-observation_ph = tf.placeholder(dtype, obs_size, name='state_action')
-q = model.forward(observation_ph)
-tf_action = tf.argmax(q)
-
-show_off = False
-with tf.Session() as sess:
-    tf.global_variables_initializer().run()
-
-    # update every epoch
-    while True:
-        observation = env.reset()
-        done = False
-        t = 0
-        cumulative_reward = 0
-        cumulative_scores = zeros_like_params()
-
-        # steps
-        while not done:
-            if show_off:
-                env.render()
-            action, new_scores = sess.run([tf_action, tf_scores],
-                                          {memory_buffer_ph: observation.squeeze()})
-            observation, reward, done, info = env.step(action)
-
-            cumulative_reward += reward
-            for old_score, new_score in zip(cumulative_scores, new_scores):
-                old_score += new_score
-            t += 1
-
-        mean_reward += cumulative_reward / batches
-        for gradient, cumulative_score in zip(gradients, cumulative_scores):
-            gradient -= cumulative_score * cumulative_reward / batches
-
-        print("Epoch: {}. Reward: {}".format(e, mean_reward))
-        feed_dict = dict(zip(gradient_phs, gradients))
-        sess.run(train_op, feed_dict)
-        if mean_reward >= 200:
-            show_off = True
+                    # print("Epoch: {}. Reward: {}. loss: {}".format(e, mean_reward, loss.mean()))

@@ -16,5 +16,5 @@ optimizers = {
 optimizer = optimizers[1]
 
 env = gym.make('Pong-v0')
-model = MultiStepConv()
+model = RecurrentConv()
 reinforce.train(env, model.forward, optimizer, show_off_at=600)

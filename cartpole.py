@@ -20,5 +20,5 @@ optimizer = optimizers[1]
 env = gym.make('CartPole-v1')
 
 model = partial(model_zoo.mlp, hidden_sizes=[5])
-reinforce.train(env, model, optimizer, show_off_at=200)
-# q_learning.train(env, model, optimizer)
+# reinforce.train(env, model, optimizer, show_off_at=200)
+q_learning.train(env, model, optimizer)

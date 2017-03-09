@@ -26,7 +26,7 @@ def train(env, network, optimizer,
     epsilon = 1
 
     observation_ph = tf.placeholder(dtype, [1, obs_size], name='observation')
-    tf_Q = network(observation_ph, act_size)
+    tf_Q = network(observation_ph, act_size, reuse=True)
     nominal_action = tf.argmax(tf.squeeze(tf_Q), axis=0, name='nominal_action')
 
     observations_ph = []
@@ -77,7 +77,7 @@ def train(env, network, optimizer,
 
                 if epsilon > .1:
                     epsilon *= .1 ** (1. / 100000.)
-                    show_off = True
+                    # show_off = True
                 next_observation, reward, done, info = env.step(action)
                 cumulative_reward += reward
 

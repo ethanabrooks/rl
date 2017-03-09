@@ -7,11 +7,11 @@ def mlp(x, out_size, hidden_sizes=None, reuse=False):
     if hidden_sizes is None:
         hidden_sizes = []
     for i, size in enumerate(hidden_sizes):
-        x = tf.contrib.fully_connected(x, size,
-                                       activation=tf.sigmoid,
+        x = tf.contrib.layers.fully_connected(x, size,
+                                       activation_fn=tf.sigmoid,
                                        scope="layer" + str(i),
                                        reuse=reuse)
-    return tf.contrib.fully_connected(x, out_size,
+    return tf.contrib.layers.fully_connected(x, out_size,
                                       scope="out_layer",
                                       reuse=reuse)
 

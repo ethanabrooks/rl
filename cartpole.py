@@ -9,7 +9,7 @@ import model_zoo
 import q_learning
 import reinforce
 
-learning_rate = 0.1
+learning_rate = 0.01
 optimizers = {
     1: AdamOptimizer(learning_rate),
     2: FtrlOptimizer(learning_rate),

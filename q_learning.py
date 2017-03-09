@@ -26,7 +26,7 @@ def train(env, network, optimizer,
     epsilon = 1
 
     observation_ph = tf.placeholder(dtype, [1, obs_size], name='observation')
-    tf_Q = network(observation_ph, act_size, reuse=True)
+    tf_Q = network(observation_ph, act_size)
     nominal_action = tf.argmax(tf.squeeze(tf_Q), axis=0, name='nominal_action')
 
     observations_ph = []
@@ -47,7 +47,11 @@ def train(env, network, optimizer,
     )
     y_guess = gather_1d(Qs[0], actions_ph)
     tf_loss = tf.square(y - y_guess)
+    gradients = optimizer.compute_gradients(tf_loss)
     train_op = optimizer.minimize(tf_loss)
+
+    for var in tf.trainable_variables():
+        print(var)
 
     show_off = False
     with tf.Session() as sess:
@@ -89,22 +93,33 @@ def train(env, network, optimizer,
                     memory_buffer.pop(0)
                     batch = zip(*[random.choice(memory_buffer) for _ in range(bsize)])
                     observations, actions, rewards, next_observations, done_values = batch
-                    _, loss, y_, y_guess_, Qs0, Qs1 = sess.run([train_op, tf_loss, y, y_guess, Qs[0], Qs[1]], feed_dict={
+                    _, gradients_, loss, y_, y_guess_, Qs0, Qs1 = sess.run(
+                        [train_op, gradients, tf_loss, y, y_guess, Qs[0], Qs[1]],
+                        feed_dict={
                         observations_ph[0]: observations,
                         actions_ph: actions,
                         rewards_ph: rewards,
                         observations_ph[1]: next_observations,
                         done_ph: done_values,
                     })
+                    # if True in done_values:
+                    #     print done_values
+                    # if y_.max() > 1:
+                    #
+                    #     print(y_)
 
-            if memory_buffer_full and e % 200 == 0:
+            if memory_buffer_full and e % 100 == 0:
                     # any(done_values):
             # print(guess[np.stack([done_values, range(len(done_values))])])
                 print("Epoch: {}. Reward: {}. q: {}".format(e, cumulative_reward, cumulative_Q))
-                print(epsilon)
+                # print(epsilon)
+                # print(map(np.mean, gradients_))
                 # print(loss.mean())
                 # print("y")
                 # print(y_)
+
+                # print("y_guess")
+                # print(y_guess_)
                 # print(done_values)
                 # print('rewards')
                 # print(rewards)

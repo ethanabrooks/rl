@@ -7,12 +7,12 @@ def mlp(x, out_size, hidden_sizes=None, reuse=False):
     if hidden_sizes is None:
         hidden_sizes = []
     for i, size in enumerate(hidden_sizes):
-        x = tf.contrib.layers.fully_connected(x, size,
-                                       activation_fn=tf.sigmoid,
-                                       scope="layer" + str(i),
+        x = tf.layers.dense(x, size,
+                                       activation=tf.sigmoid,
+                                       name="layer" + str(i),
                                        reuse=reuse)
-    return tf.contrib.layers.fully_connected(x, out_size,
-                                      scope="out_layer",
+    return tf.layers.dense(x, out_size,
+                                      name="out_layer",
                                       reuse=reuse)
 
 

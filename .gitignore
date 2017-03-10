@@ -1,1 +1,9 @@
 .idea/
+summaries
+__pycache__
+model_zoo.pyc 
+ntm.pyc 
+q_learning.pyc 
+reinforce.pyc 
+util.pyc 
+wrapper.pyc

@@ -1,13 +1,13 @@
 from functools import partial
 
 import gym.spaces
+import tensorflow as tf
 from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.ftrl import FtrlOptimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
-
-import model_zoo
-import q_learning
 import reinforce
+from model_zoo import conv_network
+import gym_minecraft
 
 learning_rate = 0.1
 optimizers = {
@@ -17,8 +17,11 @@ optimizers = {
 }
 optimizer = optimizers[1]
 
-env = gym.make('CartPole-v1')
+env = gym.make('MinecraftBasic-v0')
+env.init(start_minecraft=True)
 
-model = partial(model_zoo.mlp, hidden_sizes=[5])
-reinforce.train(env, model, optimizer, show_off_at=200)
-# q_learning.train(env, model, optimizer)
+model = partial(conv_network,
+                filters=(32, 64),
+                kernel_size=(4, 4),
+                strides=(2, 2))
+reinforce.train(env, model, optimizer)

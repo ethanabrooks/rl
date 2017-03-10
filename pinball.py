@@ -5,9 +5,10 @@ from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.ftrl import FtrlOptimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
-import model_zoo
 import q_learning
 import reinforce
+from model_zoo import trpo_conv_net, dqn_conv_net
+from wrapper import EnvWrapper
 
 learning_rate = 0.1
 optimizers = {
@@ -17,8 +18,6 @@ optimizers = {
 }
 optimizer = optimizers[1]
 
-env = gym.make('CartPole-v1')
-
-model = partial(model_zoo.mlp, hidden_sizes=[5])
-reinforce.train(env, model, optimizer, show_off_at=200)
-# q_learning.train(env, model, optimizer)
+env = EnvWrapper(gym.make('VideoPinball-v0'), .3)
+# reinforce.train(env, trpo_conv_net, optimizer, show_off_at=600)
+q_learning.train(env, trpo_conv_net, optimizer, print_freq=10)

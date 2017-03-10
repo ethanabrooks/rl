@@ -4,6 +4,7 @@ import random
 import gym.spaces
 import tensorflow as tf
 import numpy as np
+from tensorflow.python.training.adam import AdamOptimizer
 
 from util import get_dtype
 
@@ -15,16 +16,19 @@ def gather_1d(params, indices):
 
 
 # noinspection PyPep8Naming
-def train(env, network, optimizer,
+def train(env, network,
+          optimizer=AdamOptimizer(),
+          memory_buffer_size=10000,
           bsize=32,
           epochs=50000,
           gamma=.9,
-          print_freq=10):
+          print_freq=10,
+          epsilon_decay=1000000,
+          skip_frames=3):
     assert (isinstance(env.action_space, gym.spaces.Discrete))
     obs_size = env.observation_space.shape
     act_size = env.action_space.n
     dtype = tf.float32
-    memory_buffer_size = 1000
     epsilon = 1
 
     if type(obs_size) == tuple:
@@ -33,7 +37,16 @@ def train(env, network, optimizer,
         obs_size = [obs_size]
 
     observation_ph = tf.placeholder(dtype, [1] + obs_size, name='observation')
-    tf_Q = network(observation_ph, act_size)
+
+    obs_rank = len(obs_size)
+    if obs_rank in [1, 3]:
+        network_input = observation_ph
+    elif obs_rank == 2:
+        network_input = tf.expand_dims(observation_ph, 3)
+    else:
+        raise ValueError
+
+    tf_Q = network(network_input, act_size)
     nominal_action = tf.argmax(tf.squeeze(tf_Q), axis=0, name='nominal_action')
 
     observations_ph = []
@@ -45,6 +58,8 @@ def train(env, network, optimizer,
         batch_observations = tf.placeholder(dtype, [bsize] + obs_size,
                                             name='batch_observations')
         observations_ph.append(batch_observations)
+        if obs_rank == 2:
+            batch_observations = tf.expand_dims(batch_observations, 3)
         Qs.append(network(batch_observations, act_size, reuse=True))
 
     y = tf.where(
@@ -87,9 +102,11 @@ def train(env, network, optimizer,
                     cumulative_Q += Q[0, action]
 
                 if epsilon > .1:
-                    epsilon *= .1 ** (1. / 100000.)
+                    epsilon *= .1 ** (1. / epsilon_decay)
                     # show_off = True
-                next_observation, reward, done, info = env.step(action)
+                for _ in range(skip_frames + 1):
+                    next_observation, reward, done, info = env.step(action)
+
                 cumulative_reward += reward
 
                 memory_buffer.append((observation, action, reward, next_observation, done))
@@ -113,7 +130,4 @@ def train(env, network, optimizer,
             if memory_buffer_full and e % print_freq == 0:
 
                 print("Epoch: {}. ϵ: {}. Reward: {}. Q: {}. loss: {}"
-                      .format(e, epsilon, *(r/epochs for r in
-                                            [cumulative_reward,
-                                             cumulative_Q,
-                                             cumulative_loss])))
+                      .format(e, epsilon, cumulative_reward, cumulative_Q, cumulative_loss))

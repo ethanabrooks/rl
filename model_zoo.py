@@ -20,13 +20,12 @@ def maxpool2d(x, k=2):
     return tf.nn.max_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1], padding='SAME')
 
 
-def conv_layer(i, x, filter_size, num_filters, stride=1):
-    if len(x.get_shape()) < 4:
-        x = tf.expand_dims(x, 3)
+def conv_layer(i, x, filter_size, num_filters, stride=1, scope='conv_layer'):
     in_channels = x.get_shape()[-1]
-    filter = tf.get_variable('filter' + str(i),
-                             [filter_size, filter_size, in_channels, num_filters])
-    return tf.nn.conv2d(x, filter, strides=[1, stride, stride, 1], padding='SAME')
+    with tf.variable_scope(scope):
+        filter = tf.get_variable('filter' + str(i),
+                                 [filter_size, filter_size, in_channels, num_filters])
+        return tf.nn.conv2d(x, filter, strides=[1, stride, stride, 1], padding='SAME')
 
 
 def conv_net(x, out_size, strides, filters_per_layer, filter_size_list, dense_size, reuse=False):
@@ -45,12 +44,13 @@ def conv_net(x, out_size, strides, filters_per_layer, filter_size_list, dense_si
     return mlp(tf.reshape(x, [batch_size, -1]), out_size, hidden_sizes=[dense_size], reuse=reuse)
 
 
-def dqn_conv_net(x, out_size):
+def dqn_conv_net(x, out_size, reuse=False):
     return conv_net(x, out_size,
                     strides=(4, 2),
                     filters_per_layer=(16, 32),
                     filter_size_list=(8, 4),
-                    dense_size=256)
+                    dense_size=256,
+                    reuse=reuse)
 
 
 def trpo_conv_net(x, out_size, reuse=False):

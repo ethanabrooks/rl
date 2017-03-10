@@ -1,4 +1,6 @@
 import numpy as np
+from gym.spaces import Box
+from gym.spaces import Discrete
 
 
 def zeros_like_list(values):
@@ -6,7 +8,13 @@ def zeros_like_list(values):
 
 
 def get_dtype(env):
-    return env.observation_space.low.dtype
+    space = env.observation_space
+    if isinstance(space, Discrete):
+        return type(space.sample())
+    elif isinstance(space, Box):
+        return env.observation_space.low.dtype
+    else:
+        raise ValueError
 
 
 def get_base_name(var):

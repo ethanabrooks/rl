@@ -1,21 +1,26 @@
 from __future__ import print_function
 
-import gym.spaces
-import numpy as np
 import tensorflow as tf
-from tqdm import tqdm
+from tensorflow.python.training.adam import AdamOptimizer
+
 from util import *
 
 
-def train(env, network, optimizer, show_off_at):
+def train(env, network,
+          optimizer=AdamOptimizer(),
+          show_off_at=400):
     dtype = tf.float32
-    assert (isinstance(env.action_space, gym.spaces.Discrete))
-    obs_size = env.observation_space.shape
+    if isinstance(env.observation_space, Discrete):
+        obs_size = ()
+    elif isinstance(env.observation_space, Box):
+        obs_size = env.observation_space.shape
+    else:
+        raise ValueError
     act_size = env.action_space.n
 
     # get action
     observation_ph = tf.placeholder(dtype, obs_size, name='observation')
-    logits = network(x=tf.expand_dims(observation_ph, 0), out_size=act_size)
+    logits = network(tf.expand_dims(observation_ph, 0), out_size=act_size)
     action_dist = tf.nn.softmax(logits, name='action_dist')
     tf_action = tf.squeeze(tf.multinomial(logits, 1), name='action')
 
@@ -46,7 +51,7 @@ def train(env, network, optimizer, show_off_at):
             mean_reward = 0
 
             # average over batches
-            for b in tqdm(range(batches)):
+            for b in range(batches):
                 observation = env.reset()
                 done = False
                 t = 0
@@ -58,7 +63,7 @@ def train(env, network, optimizer, show_off_at):
                     if show_off:
                         env.render()
                     action, new_scores = sess.run([tf_action, tf_scores],
-                                                  {observation_ph: observation.squeeze()})
+                                                  {observation_ph: observation})
                     observation, reward, done, info = env.step(action)
 
                     cumulative_reward += reward

@@ -4,17 +4,18 @@ import numpy as np
 import tensorflow as tf
 
 
-def mlp(x, out_size, hidden_sizes=None, reuse=False):
+def mlp(x, out_size, hidden_sizes=None, scope='mlp', reuse=False):
     if hidden_sizes is None:
         hidden_sizes = []
-    for i, size in enumerate(hidden_sizes):
-        x = tf.layers.dense(x, size,
-                            activation=tf.sigmoid,
-                            name="layer" + str(i),
-                            reuse=reuse)
-    return tf.layers.dense(x, out_size,
-                           name="out_layer",
-                           reuse=reuse)
+    with tf.variable_scope(scope):
+        for i, size in enumerate(hidden_sizes):
+            x = tf.layers.dense(x, size,
+                                activation=tf.sigmoid,
+                                name="layer{}".format(i),
+                                reuse=reuse)
+        return tf.layers.dense(x, out_size,
+                               name="out_layer",
+                               reuse=reuse)
 
 
 def maxpool2d(x, k=2):
@@ -23,29 +24,31 @@ def maxpool2d(x, k=2):
 
 def conv_layer(i, x, filter_size, num_filters, stride=1, scope='conv_layer', reuse=False):
     in_channels = x.get_shape()[-1]
-    with tf.variable_scope(scope, reuse=reuse):
-        filter = tf.get_variable('filter' + str(i),
+    with tf.variable_scope('{}_{}'.format(scope, i), reuse=reuse):
+        filter = tf.get_variable('filter',
                                  [filter_size, filter_size, in_channels, num_filters])
         return tf.nn.conv2d(x, filter, strides=[1, stride, stride, 1], padding='SAME')
 
 
-def conv_net(x, out_size, strides, filters_per_layer, filter_size_list, dense_size, reuse=False):
-    for i, (filter_size,
+def conv_net(x, out_size, strides, filters_per_layer, filter_size_list, dense_size,
+             scope='conv_net',
+             reuse=False):
+    with tf.variable_scope(scope, reuse=reuse):
+        for i, (filter_size,
             num_filters,
             stride) in enumerate(zip(filter_size_list,
                                      filters_per_layer,
                                      strides)):
-        with tf.variable_scope('conv_net', reuse=reuse):
             conv_output = conv_layer(i, x, filter_size, num_filters, stride)
-            bias = tf.get_variable('bias' + str(i), num_filters)
+            bias = tf.get_variable('bias_{}'.format(i), num_filters)
             add = tf.nn.bias_add(conv_output, bias)
             x = tf.nn.relu(add)
 
-    batch_size = int(x.get_shape()[0])
-    return mlp(tf.reshape(x, [batch_size, -1]), out_size, [dense_size], reuse)
+        batch_size = int(x.get_shape()[0])
+        return mlp(tf.reshape(x, [batch_size, -1]), out_size, [dense_size], reuse=reuse)
 
 
-def simple_conv_net(x, out_size, reuse=False):
+def simple_conv_net(x, out_size, scope='simple_conv_net', reuse=False):
     """
     assumes input is [bsize, obs_dim]
     """
@@ -57,10 +60,10 @@ def simple_conv_net(x, out_size, reuse=False):
 
     filter_size = int(np.ceil(np.sqrt(dim(x))))
     x = tf.reshape(x, [batch_size, filter_size, -1, 1])
-    x = conv_layer(0, x, filter_size, 1, reuse=reuse)
+    x = conv_layer(0, x, filter_size, 1, scope=scope, reuse=reuse)
     x = tf.reshape(x, [batch_size, -1])
     x = tf.nn.relu(x)
-    return mlp(x, out_size, [], reuse)
+    return mlp(x, out_size, [], scope, reuse)
 
 
 def dqn_conv_net(x, out_size, reuse=False):

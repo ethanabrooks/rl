@@ -1,18 +1,18 @@
 # coding=utf-8
 import random
+import shutil
 
 import gym.spaces
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 from tensorflow.python.training.adam import AdamOptimizer
-
-from util import get_dtype
+import os
 
 
 def gather_1d(params, indices):
     h, w = params.get_shape()
-    act_indices = tf.stack([tf.range(h), indices], axis=1)
-    return tf.gather_nd(params, act_indices)
+    indices = tf.stack([tf.range(h), indices], axis=1)
+    return tf.gather_nd(params, indices)
 
 
 # noinspection PyPep8Naming
@@ -20,11 +20,15 @@ def train(env, network,
           optimizer=AdamOptimizer(),
           memory_buffer_size=10000,
           bsize=32,
-          epochs=50000,
+          epochs=500000,
           gamma=.9,
           print_freq=10,
           epsilon_decay=1000000,
-          skip_frames=3):
+          skip_frames=3,
+          summary_dir='summaries'):
+    if os.path.exists(summary_dir):
+        shutil.rmtree(summary_dir)
+
     assert (isinstance(env.action_space, gym.spaces.Discrete))
     obs_size = env.observation_space.shape
     act_size = env.action_space.n
@@ -33,10 +37,10 @@ def train(env, network,
 
     if type(obs_size) == tuple:
         obs_size = list(obs_size)
-    elif type(obs_size) != list:
-        obs_size = [obs_size]
 
-    observation_ph = tf.placeholder(dtype, [1] + obs_size, name='observation')
+    observation_ph = tf.placeholder(dtype,
+                                    [1] + obs_size,  # expand to batch size
+                                    name='observation')
 
     obs_rank = len(obs_size)
     if obs_rank in [1, 3]:
@@ -46,12 +50,12 @@ def train(env, network,
     else:
         raise ValueError
 
-    tf_Q = network(network_input, act_size)
-    nominal_action = tf.argmax(tf.squeeze(tf_Q), axis=0, name='nominal_action')
+    tf_Q = tf.squeeze(network(network_input, act_size))
+    proposed_action = tf.argmax(tf_Q, axis=0, name='proposed_action')
 
     observations_ph = []
     actions_ph = tf.placeholder(tf.int32, [bsize], name='batch_actions')
-    rewards_ph = tf.placeholder(dtype, [bsize], name='reward')
+    rewards_ph = tf.placeholder(dtype, [bsize], name='rewards')
     done_ph = tf.placeholder(tf.bool, [bsize], name='done')
     Qs = []
     for _ in range(2):
@@ -67,24 +71,34 @@ def train(env, network,
         rewards_ph,
         rewards_ph + gamma * tf.reduce_max(Qs[1], axis=1)
     )
+    rewards_guess =
     y_guess = gather_1d(Qs[0], actions_ph)
     tf_loss = tf.square(y - y_guess)
     train_op = optimizer.minimize(tf_loss)
 
     for var in tf.trainable_variables():
-        print(var)
+        print(var.name)
+
+    summary_phs = {}
+    summary_names = ['reward', 'loss', 'Q']
+    for name in summary_names:
+        summary_phs[name] = tf.placeholder(tf.float32, (), name)
+        tf.summary.scalar(name, summary_phs[name])
+
+    summaries = tf.summary.merge_all()
 
     show_off = False
     with tf.Session() as sess:
+        writer = tf.summary.FileWriter(summary_dir, sess.graph)
         tf.global_variables_initializer().run()
         memory_buffer = []
 
         step = 0
         # update every epoch
         for e in range(epochs):
-            cumulative_reward = 0
-            cumulative_Q = 0
-            cumulative_loss = 0
+            total_reward = 0
+            total_Q = 0
+            total_loss = 0
             observation = env.reset()
             done = False
 
@@ -97,17 +111,16 @@ def train(env, network,
                 if random.random() < epsilon:
                     action = env.action_space.sample()
                 else:
-                    action, Q = sess.run([nominal_action, tf_Q],
+                    action, Q = sess.run([proposed_action, tf_Q],
                                          {observation_ph: np.expand_dims(observation, 0)})
-                    cumulative_Q += Q[0, action]
+                    total_Q += Q[action]
 
                 if epsilon > .1:
                     epsilon *= .1 ** (1. / epsilon_decay)
-                    # show_off = True
                 for _ in range(skip_frames + 1):
                     next_observation, reward, done, info = env.step(action)
 
-                cumulative_reward += reward
+                total_reward += reward
 
                 memory_buffer.append((observation, action, reward, next_observation, done))
                 observation = next_observation
@@ -125,9 +138,19 @@ def train(env, network,
                                            observations_ph[1]: next_observations,
                                            done_ph: done_values,
                                        })
-                    cumulative_loss += loss.mean()
+                    total_loss += loss.mean()
 
             if memory_buffer_full and e % print_freq == 0:
+                values = {
+                    'reward': total_reward,
+                    'loss': total_loss,
+                    'Q': total_Q
+                }
+                writer.add_summary(sess.run(summaries,
+                                            {summary_phs[name]: values[name]
+                                             for name in summary_names}),
+                                   global_step=e)
 
-                print("Epoch: {}. ϵ: {}. Reward: {}. Q: {}. loss: {}"
-                      .format(e, epsilon, cumulative_reward, cumulative_Q, cumulative_loss))
+                print("Epoch: {:5} ϵ: {:.4f}".format(e, epsilon) +
+                      ''.join(' {}: {:8.4f}'.format(name, values[name])
+                              for name in summary_names))

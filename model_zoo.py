@@ -1,4 +1,5 @@
 from operator import mul
+import numpy as np
 
 import tensorflow as tf
 
@@ -20,9 +21,9 @@ def maxpool2d(x, k=2):
     return tf.nn.max_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1], padding='SAME')
 
 
-def conv_layer(i, x, filter_size, num_filters, stride=1, scope='conv_layer'):
+def conv_layer(i, x, filter_size, num_filters, stride=1, scope='conv_layer', reuse=False):
     in_channels = x.get_shape()[-1]
-    with tf.variable_scope(scope):
+    with tf.variable_scope(scope, reuse=reuse):
         filter = tf.get_variable('filter' + str(i),
                                  [filter_size, filter_size, in_channels, num_filters])
         return tf.nn.conv2d(x, filter, strides=[1, stride, stride, 1], padding='SAME')
@@ -41,15 +42,33 @@ def conv_net(x, out_size, strides, filters_per_layer, filter_size_list, dense_si
             x = tf.nn.relu(add)
 
     batch_size = int(x.get_shape()[0])
-    return mlp(tf.reshape(x, [batch_size, -1]), out_size, hidden_sizes=[dense_size], reuse=reuse)
+    return mlp(tf.reshape(x, [batch_size, -1]), out_size, [dense_size], reuse)
+
+
+def simple_conv_net(x, out_size, reuse=False):
+    """
+    assumes input is [bsize, obs_dim]
+    """
+    assert len(x.get_shape()) == 2
+    batch_size = int(x.get_shape()[0])
+
+    def dim(x):
+        return int(x.get_shape()[1])
+
+    filter_size = int(np.ceil(np.sqrt(dim(x))))
+    x = tf.reshape(x, [batch_size, filter_size, -1, 1])
+    x = conv_layer(0, x, filter_size, 1, reuse=reuse)
+    x = tf.reshape(x, [batch_size, -1])
+    x = tf.nn.relu(x)
+    return mlp(x, out_size, [], reuse)
 
 
 def dqn_conv_net(x, out_size, reuse=False):
     return conv_net(x, out_size,
-                    strides=(4, 2),
-                    filters_per_layer=(16, 32),
-                    filter_size_list=(8, 4),
-                    dense_size=256,
+                    strides=(4, 2, 1),
+                    filters_per_layer=(32, 64, 64),
+                    filter_size_list=(8, 4, 3),
+                    dense_size=512,
                     reuse=reuse)
 
 

@@ -35,10 +35,10 @@ def conv_net(x, out_size, strides, filters_per_layer, filter_size_list, dense_si
              reuse=False):
     with tf.variable_scope(scope, reuse=reuse):
         for i, (filter_size,
-            num_filters,
-            stride) in enumerate(zip(filter_size_list,
-                                     filters_per_layer,
-                                     strides)):
+                num_filters,
+                stride) in enumerate(zip(filter_size_list,
+                                         filters_per_layer,
+                                         strides)):
             conv_output = conv_layer(i, x, filter_size, num_filters, stride)
             bias = tf.get_variable('bias_{}'.format(i), num_filters)
             add = tf.nn.bias_add(conv_output, bias)

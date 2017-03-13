@@ -50,7 +50,7 @@ def train(env, network,
     else:
         raise ValueError
 
-    tf_Q = tf.squeeze(network(network_input, act_size))
+    tf_Q = tf.squeeze(network(network_input, act_size, scope='Qnetwork'))
     proposed_action = tf.argmax(tf_Q, axis=0, name='proposed_action')
 
     observations_ph = []
@@ -64,15 +64,25 @@ def train(env, network,
         observations_ph.append(batch_observations)
         if obs_rank == 2:
             batch_observations = tf.expand_dims(batch_observations, 3)
-        Qs.append(network(batch_observations, act_size, reuse=True))
+        Qs.append(network(batch_observations, act_size, scope='Qnetwork', reuse=True))
 
     y = tf.where(
         done_ph,
         rewards_ph,
         rewards_ph + gamma * tf.reduce_max(Qs[1], axis=1)
     )
+    r = tf.where(
+        done_ph,
+        tf.zeros_like(rewards_ph),
+        rewards_ph
+    )
+
+    r_guess = gather_1d(
+        network(observations_ph[0], act_size, scope='Rnetwork'), #, reuse=True),
+        actions_ph
+    )
     y_guess = gather_1d(Qs[0], actions_ph)
-    tf_loss = tf.square(y - y_guess)
+    tf_loss = sum(map(tf.square, [y - y_guess, r - r_guess]))
     train_op = optimizer.minimize(tf_loss)
 
     for var in tf.trainable_variables():
@@ -100,6 +110,7 @@ def train(env, network,
             total_loss = 0
             observation = env.reset()
             done = False
+            last_observation = None
 
             # steps
             memory_buffer_full = False
@@ -121,7 +132,9 @@ def train(env, network,
 
                 total_reward += reward
 
-                memory_buffer.append((observation, action, reward, next_observation, done))
+                if last_observation is not None:
+                    memory_buffer.append((last_observation, action, reward, next_observation, done))
+                last_observation = observation
                 observation = next_observation
 
                 memory_buffer_full = len(memory_buffer) >= memory_buffer_size
